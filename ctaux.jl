@@ -329,11 +329,12 @@ module Ctaux
         ratio = (currentk/K)*det_ratioup*det_ratiodown
         rsign = sign(ratio)
 
-        as = indexcon[vertex[3]]
+        
         
         r = rand()
         #println("r: ",r)
         if min(1.0,abs(ratio)) > r
+            as = indexcon[vertex[3]]
             vertex_remove!(vertex,τcon,spincon,indexcon,currentk)
             pass = true
 
@@ -397,8 +398,17 @@ module Ctaux
             Dr[indexcon[j],rspin] = - Gτ0*(ev-1)
         end
 
+        #=
         λ = Dd
-        λ += -dot(Dr[1:currentk,rspin],nmat[1:currentk,1:currentk,rspin]*Dc[1:currentk,rspin])
+        for i in 1:currentk
+            for j in 1:currentk
+                λ+= - Dr[i,rspin]*nmat[i,j,rspin]*Dc[j,rspin]
+            end
+        end
+        =#
+
+        λ = Dd -dot(Dr[1:currentk,rspin],nmat[1:currentk,1:currentk,rspin]*Dc[1:currentk,rspin])
+        #det_ratio = λ
         det_ratio = λ[1]
     
         return det_ratio
@@ -533,9 +543,12 @@ module Ctaux
         deleteat!(indexcon,vertex[3])
 
         for i in 1:currentk-1
+            indexcon[i] += ifelse(indexcon[i] >= is,-1,0)
+            #=
             if indexcon[i] >= is
                 indexcon[i] += -1
             end
+            =#
         end
         
     end
@@ -566,8 +579,12 @@ module Ctaux
         end
         as = indexcon[vertex[3]]        
         ntemp[as,as] = 1/λ
-        
+        #println("as ",as,"\t",k)
+        ntemp[1:k-1,1:k-1] = nmatt[1:k-1,1:k-1]
+        ntemp[k,1:k-1] = R[1:k-1]
+        ntemp[1:k-1,k] = L[1:k-1]        
 
+        #=
         if as == 1
             ntemp[2:k,2:k] = nmatt[1:k-1,1:k-1]
             ntemp[1,2:k] = R[1:k-1]
@@ -584,6 +601,7 @@ module Ctaux
             ntemp[as,1:as-1] = R[1:as-1]
             ntemp[as,as+1:k] = R[as:k-1]
         end
+        =#
 
         nmat[1:k,1:k,rspin] = ntemp[1:k,1:k]
     
@@ -679,14 +697,15 @@ module Ctaux
 
                 for sigma in 1:2
                     g0[sigma] = Gτ0spl[sigma](dτ)
-
+                    gsum[sigma] += g0[sigma]*S[j,sigma]*δτ*ifelse(j == 1 || j ==i,0.5,1.0)
                     
+                    #=
                     if j == 1 || j ==i
                         gsum[sigma] += g0[sigma]*S[j,sigma]*δτ/2
                     else
                         gsum[sigma] += g0[sigma]*S[j,sigma]*δτ
                     end
-                    
+                    =#
 
 
                 end
@@ -700,12 +719,14 @@ module Ctaux
                 end
                 for sigma in 1:2
                     g0[sigma] = -Gτ0spl[sigma](dτ+β)
-                    
+                    gsum[sigma] += g0[sigma]*S[j,sigma]*δτ*ifelse(j == ntime || j ==i,0.5,1.0)
+                    #=
                     if j == ntime || j ==i
                         gsum[sigma] += g0[sigma]*S[j,sigma]*δτ/2
                     else
                         gsum[sigma] += g0[sigma]*S[j,sigma]*δτ
                     end
+                    =#
                     
 
                 end
