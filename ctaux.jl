@@ -452,10 +452,13 @@ module Ctaux
             else
                 i = 1
                 for j in 1:currentk
+                    i += ifelse(τcon[indexcon[j]] < τ,1,0)
+                    #=
                     if τcon[indexcon[j]] < τ
                        
                         i += 1
                     end
+                    =#
                 end
                 index = i
             end
