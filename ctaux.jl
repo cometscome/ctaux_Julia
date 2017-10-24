@@ -46,7 +46,7 @@ module Ctaux
         println("done.")
         global γ0
         #println(Ef)
-        println("γ0",γ0)
+        println("γ0= ",γ0)
 
         println("Thermalizing...")
         currentk = ctaux_thermal!(nmat,τcon,spincon,indexcon,currentk)        
@@ -388,9 +388,10 @@ module Ctaux
         τi = vertex[1]
         #println("τs: ",τi)
         for j in 1:currentk
-            τj = τcon[indexcon[j]]
+            jj = indexcon[j]
+            τj = τcon[jj]
             #println("τj:",τj,"\t j",indexcon[j])
-            sj = spincon[indexcon[j]]
+            sj = spincon[jj]
             Gτ0 = calc_Gτ(τi,τj,rspin,β)
             ev =  ifelse(ssign*sj==1,expVg[1],expVg[2])
             Dr[indexcon[j],rspin] = - Gτ0*(ev-1)
@@ -428,6 +429,7 @@ module Ctaux
     function try_insert_vertex(τcon,spincon,indexcon,currentk)
         #global currentk,τcon,indexcon
         #global currentk
+        global β
         τ=rand()*β
         spin = (-1)^(rand(1:2)-1)
         index = 1
