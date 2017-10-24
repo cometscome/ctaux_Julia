@@ -44,9 +44,9 @@ module Ctaux
 
 
         println("done.")
-        global γ
+        global γ0
         #println(Ef)
-        println(γ)
+        println("γ0",γ0)
 
         println("Thermalizing...")
         currentk = ctaux_thermal!(nmat,τcon,spincon,indexcon,currentk)        
@@ -90,9 +90,11 @@ module Ctaux
         global μ,β,U,K
         global Ef
         const Ef = -μ
-        global γ
+        global γ0,expVg
         
-        const γ=acosh(1.0+(β*U)/(2.0*K))
+        const γ0=acosh(1.0+(β*U)/(2.0*K))
+        const expVg = (exp(γ0),exp(-γ0))
+        #println("exp",expVg,"γ",γ0)
         #global τmesh
         τmesh = calc_linear_mesh(0.0,β,ntime) 
         #global ωmesh
@@ -356,13 +358,15 @@ module Ctaux
 
     function calc_insert!(vertex,rspin,Dr,Dc,nmat,τcon,spincon,indexcon,currentk) #fast update
         ssign = (-1)^(rspin-1)
-        global γ
+        global γ,expVg
         k = currentk
         
         
         Gτ0 = Gτ0spl[rspin](1e-8)
-        expV = exp(γ*ssign*vertex[2])        
-        Dd = expV - Gτ0*(expV-1)  
+        #expV = exp(γ*ssign*vertex[2])
+        ev =  ifelse(ssign*vertex[2]==1,expVg[1],expVg[2])
+        #println(ev,"\t",expV,"\t",ssign*vertex[2],"\t",γ)
+        Dd = ev - Gτ0*(ev-1)  
 
         if k ==0
             #println("k = 0!")
@@ -376,7 +380,8 @@ module Ctaux
         for i in 1:k
             τi = τcon[indexcon[i]]
             Gτ0 = calc_Gτ(τi,τj,rspin,β)
-            Dc[indexcon[i],rspin] = - Gτ0*(exp(γ*ssign*sj)-1)
+            ev =  ifelse(ssign*sj==1,expVg[1],expVg[2])
+            Dc[indexcon[i],rspin] = - Gτ0*(ev-1)
         end
 
 
@@ -387,7 +392,8 @@ module Ctaux
             #println("τj:",τj,"\t j",indexcon[j])
             sj = spincon[indexcon[j]]
             Gτ0 = calc_Gτ(τi,τj,rspin,β)
-            Dr[indexcon[j],rspin] = - Gτ0*(exp(γ*ssign*sj)-1)
+            ev =  ifelse(ssign*sj==1,expVg[1],expVg[2])
+            Dr[indexcon[j],rspin] = - Gτ0*(ev-1)
         end
 
         λ = Dd
@@ -719,7 +725,7 @@ module Ctaux
         Mklm = zeros(Float64,currentk,currentk,norbs)
         ev = zeros(Float64,norbs)
         g0l = zeros(Float64,currentk,norbs)
-        global γ
+        #global γ
 
         for k in 1:currentk
             kk = indexcon[k]
@@ -727,7 +733,8 @@ module Ctaux
             sk = spincon[kk]
             for sigma in 1:norbs
                 ssign = (-1)^(sigma-1)
-                ev[sigma] = exp(γ*ssign*sk)
+                ev[sigma] =  ifelse(ssign*sk==1,expVg[1],expVg[2])
+                #ev[sigma] = exp(γ*ssign*sk)
             end
             for l in 1:currentk
                 ll = indexcon[l]
