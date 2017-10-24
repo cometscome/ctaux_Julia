@@ -1,4 +1,4 @@
-# Continuous-time auxiliary-field Quantum Monte Carlo method for Anderson impurity model with Beth-lattice-bath electrons
+# Continuous-time auxiliary-field Quantum Monte Carlo method for Anderson impurity model with Bethe-lattice-bath electrons
 
 See, E. Gull et al., EPL 82, 57003 (2008)
 
