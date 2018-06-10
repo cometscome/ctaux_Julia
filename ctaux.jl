@@ -1,22 +1,15 @@
 module Ctaux
     import  Dierckx
     export ctaux_solver
+    using FFTW
+if v"0.7" <= VERSION 
+    using Random
+    using LinearAlgebra
+end
 
 
-    function ctaux_solver(β0,U0,μ0,K0,mqs0,ntime0,mfreq0,norbs0,V0,nthermal0,mkink0)
-        global β,U,μ,K,mqs,mfreq,ntime,norbs,V,nthermal,mkink
-        const β=β0
-        const U=U0
-        const μ=μ0
-        const K=K0
-        const mqs = mqs0
-        const mfreq = mfreq0
-        const ntime = ntime0
-        const norbs = norbs0
-        const V = V0
-        const nthermal = nthermal0
-        const mkink = mkink0
-        
+
+    function ctaux_solver(β,U,μ,K,mqs,ntime,mfreq,norbs,V,nthermal,mkink)
         
     
         println( "------------------------------------------------------")
@@ -38,64 +31,52 @@ module Ctaux
 
         println("Initializing...")
         currentk = 0
-        nmat,S,Scount,τcon,spincon,indexcon = init_arrays()
-        τmesh = ctaux_init()
+        nmat,S,Scount,τcon,spincon,indexcon = init_arrays(mkink,norbs,ntime)
+        τmesh,ωmesh,Δ,Ef,orderdisp,γ0,expVg,Gτ0spl = ctaux_init(mkink,ntime,U,K,β,μ,mfreq,norbs,V)
         #println(currentk)
 
 
         println("done.")
-        global γ0
+        #global γ0
         #println(Ef)
         println("γ0= ",γ0)
 
         println("Thermalizing...")
-        currentk = ctaux_thermal!(nmat,τcon,spincon,indexcon,currentk)        
+        currentk = ctaux_thermal!(nmat,τcon,spincon,indexcon,currentk,norbs,expVg,Gτ0spl,K,β,nthermal)        
         println("done.")
 
         println("QMC Start!")
-        @time currentk,orderdisp = ctaux_qmc!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh)
+        @time currentk,orderdisp = ctaux_qmc!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh,norbs,expVg,Gτ0spl,K,β,mkink,ntime,mqs)
         println("done!")
 
         println("Calculating Green's function...")
-        Gτ = calc_green(S,τmesh)
+        Gτ = calc_green(S,τmesh,β,ntime,norbs,Gτ0spl)
         println("done.")
    
         return τmesh,Gτ,orderdisp,S
     end
 
-    function ctaux_init()
-        global orderdisp,mkink
+    function ctaux_init(mkink,ntime,U,K,β,μ,mfreq,norbs,V)
+#        global orderdisp,mkink
         orderdisp = zeros(Int64,mkink)
     
         #global Dr,Dc,Dd,nmat
-        global debug
-        debug = false
-        #=
-        global orderdisp,detold,debug,averagesign,accept_insert,accept_remove,number_insert,number_remove,averagek
-
-        detold = ones(Float64,2)
-        
-        averagesign = 0
-        accept_insert = 0
-        accept_remove = 0
-        number_insert = 0
-        number_remove = 0
-        averagek = 0
-        =#
+#        global debug
+#        debug = false
 
 
 
         srand(1234)
     
-        global μ,β,U,K
-        global Ef
-        const Ef = -μ
-        global γ0,expVg
+
+#        global μ,β,U,K
+        #global Ef
+        Ef = -μ
+#        global γ0,expVg
         
-        const γ0=acosh(1.0+(β*U)/(2.0*K))
-        const expVg = (exp(γ0),exp(-γ0))
-        #println("exp",expVg,"γ",γ0)
-        #global τmesh
+        γ0=acosh(1.0+(β*U)/(2.0*K))
+        expVg = (exp(γ0),exp(-γ0))
+
         τmesh = calc_linear_mesh(0.0,β,ntime) 
         #global ωmesh
         ωmesh = calc_linear_mesh(π/β,(π/β)*(2mfreq-1.0),mfreq)
@@ -120,11 +101,11 @@ module Ctaux
         end
         
         Gτ0 = zeros(Float64,ntime,norbs,norbs) #Non-perturbative Green's function in the imaginary-time space
-        Gτ0 = fft_ω2τ(Gf0,ωmesh)
+        Gτ0 = fft_ω2τ(Gf0,ωmesh,norbs,mfreq,ntime,β)
         #testv = zeros(Float64,ntime)
         
         #ln(typeof(Gτ0))
-        global Gτ0spl
+        #global Gτ0spl
         Gτ0spl0 = []
         Gf0 = - Gf0 
         Gτ0 = - Gτ0
@@ -135,22 +116,22 @@ module Ctaux
             #println(spl(3.0))
             push!(Gτ0spl0,spl)
         end 
-        const Gτ0spl=Gτ0spl0
+        Gτ0spl=Gτ0spl0
 
-        return τmesh
+        return τmesh,ωmesh,Δ,Ef,orderdisp,γ0,expVg,Gτ0spl
         
     end
 
-    function ctaux_thermal!(nmat,τcon,spincon,indexcon,currentk)        
+    function ctaux_thermal!(nmat,τcon,spincon,indexcon,currentk,norbs,expVg,Gτ0spl,K,β,nthermal)        
         averagesign = 0.0
         for i in 1:nthermal
             r = rand()
             
             if r > 0.5
-                currentk,pass,rsign = ctaux_insert!(nmat,τcon,spincon,indexcon,currentk)
+                currentk,pass,rsign = ctaux_insert!(nmat,τcon,spincon,indexcon,currentk,norbs,expVg,Gτ0spl,K,β)
                 averagesign += rsign
             else
-                currentk,pass,rsign = ctaux_remove!(nmat,τcon,spincon,indexcon,currentk)
+                currentk,pass,rsign = ctaux_remove!(nmat,τcon,spincon,indexcon,currentk,K)
                 averagesign += rsign
             end
             
@@ -171,7 +152,7 @@ module Ctaux
 
 
 
-    function ctaux_qmc!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh)
+    function ctaux_qmc!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh,norbs,expVg,Gτ0spl,K,β,mkink,ntime,mqs)
         #global averagesign
         number_insert = 0
         number_remove = 0
@@ -186,7 +167,7 @@ module Ctaux
             averagek += currentk
             if r > 0.5
                 number_insert += 1
-                currentk,pass,rsign = ctaux_insert!(nmat,τcon,spincon,indexcon,currentk)
+                currentk,pass,rsign = ctaux_insert!(nmat,τcon,spincon,indexcon,currentk,norbs,expVg,Gτ0spl,K,β)
                 averagesign += rsign
 
                 if pass 
@@ -198,7 +179,7 @@ module Ctaux
 
             else
                 number_remove += 1
-                currentk,pass,rsign = ctaux_remove!(nmat,τcon,spincon,indexcon,currentk)
+                currentk,pass,rsign = ctaux_remove!(nmat,τcon,spincon,indexcon,currentk,K)
                 averagesign += rsign
                 #println(pass)
                 if pass 
@@ -223,14 +204,14 @@ module Ctaux
                 println(number_remove,"\t",accept_remove,"\t",accept_remove/number_remove)
             end
 
-            calc_S!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh)
+            calc_S!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh,ntime,norbs,β,expVg,Gτ0spl)
 
         end
         
 
         S[:,:] = S[:,:]/mqs
         Scount[:]=ntime*Scount[:]/sum(Scount)
-        global ntime
+        #global ntime
         for i in 1:ntime
             S[i,:] = S[i,:]/Scount[i]
         end
@@ -242,42 +223,27 @@ module Ctaux
     
 
 
-    function ctaux_insert!(nmat,τcon,spincon,indexcon,currentk)
+    function ctaux_insert!(nmat,τcon,spincon,indexcon,currentk,norbs,expVg,Gτ0spl,K,β)
 #        println("-----------insert----------------------")
         pass = false
-        vertex = try_insert_vertex(τcon,spincon,indexcon,currentk) #trial vertex (τ,spin,index)
+        vertex = try_insert_vertex(τcon,spincon,indexcon,currentk,β) #trial vertex (τ,spin,index)
 
     
         det_ratioup = 0.0
         det_ratiodown = 0.0
 
-        global norbs
+#        global norbs
 
         Dr = zeros(Float64,currentk,norbs)
         Dc = zeros(Float64,currentk,norbs)
 
 
-        det_ratioup = calc_insert!(vertex,1,Dr,Dc,nmat,τcon,spincon,indexcon,currentk)
-        det_ratiodown = calc_insert!(vertex,2,Dr,Dc,nmat,τcon,spincon,indexcon,currentk)
-
-        #=
-        global debug
-        if debug 
-            detup = calc_insert_det(vertex,1)
-            detdown = calc_insert_det(vertex,2)
-            global detold
-        
-            println("r:",det_ratioup,"\t",detup/detold[1])
-            println("r:",det_ratiodown,"\t",detdown/detold[2])
-        end
-        =#
+        det_ratioup = calc_insert!(vertex,1,Dr,Dc,nmat,τcon,spincon,indexcon,currentk,expVg,Gτ0spl,β)
+        det_ratiodown = calc_insert!(vertex,2,Dr,Dc,nmat,τcon,spincon,indexcon,currentk,expVg,Gτ0spl,β)
 
         ratio = det_ratioup*det_ratiodown*K/(currentk+1)
         rsign = sign(ratio)
-#        global averagesign
 
-        
-#        println("ratio insert:",ratio,"\t",currentk)
         r = rand()
 
         if min(1.0,abs(ratio)) > r
@@ -288,12 +254,7 @@ module Ctaux
 
             pass = true
 
-            #=
-            if debug
-                detold[1] = detup
-                detold[2] = detdown
-            end
-            =#
+
            
             construct_insert_nmat!(vertex,1,det_ratioup,Dr,Dc,nmat,indexcon,currentk)
             construct_insert_nmat!(vertex,2,det_ratiodown,Dr,Dc,nmat,indexcon,currentk)
@@ -302,7 +263,7 @@ module Ctaux
         return currentk,pass,rsign
     end
 
-    function ctaux_remove!(nmat,τcon,spincon,indexcon,currentk)
+    function ctaux_remove!(nmat,τcon,spincon,indexcon,currentk,K)
         pass = false
         if currentk ==0
             rsign = 1.0
@@ -314,23 +275,9 @@ module Ctaux
         det_ratioup = calc_remove(vertex,1,nmat,indexcon)
         det_ratiodown = calc_remove(vertex,2,nmat,indexcon)    
 
-        #=
-        global debug
-        if debug
-            detup = calc_remove_det(vertex,1)
-            detdown = calc_remove_det(vertex,2)
-            global detold
-            println("r:",det_ratioup,"\t",detup/detold[1])
-            println("r:",det_ratiodown,"\t",detdown/detold[2])
-        end
-        =#
-
-        global K
         ratio = (currentk/K)*det_ratioup*det_ratiodown
         rsign = sign(ratio)
 
-        
-        
         r = rand()
         #println("r: ",r)
         if min(1.0,abs(ratio)) > r
@@ -338,12 +285,6 @@ module Ctaux
             vertex_remove!(vertex,τcon,spincon,indexcon,currentk)
             pass = true
 
-            #=
-            if debug
-                detold[1] = detup
-                detold[2] = detdown
-            end
-            =#
             currentk += -1
 
             construct_remove_nmat!(as,1,det_ratioup,nmat,currentk)
@@ -357,9 +298,9 @@ module Ctaux
 
 
 
-    function calc_insert!(vertex,rspin,Dr,Dc,nmat,τcon,spincon,indexcon,currentk) #fast update
+    function calc_insert!(vertex,rspin,Dr,Dc,nmat,τcon,spincon,indexcon,currentk,expVg,Gτ0spl,β) #fast update
         ssign = (-1)^(rspin-1)
-        global γ,expVg
+#        global γ,expVg
         k = currentk
         
         
@@ -380,7 +321,7 @@ module Ctaux
         sj = vertex[2]
         for i in 1:k
             τi = τcon[indexcon[i]]
-            Gτ0 = calc_Gτ(τi,τj,rspin,β)
+            Gτ0 = calc_Gτ(τi,τj,rspin,β,Gτ0spl)
             ev =  ifelse(ssign*sj==1,expVg[1],expVg[2])
             Dc[indexcon[i],rspin] = - Gτ0*(ev-1)
         end
@@ -393,7 +334,7 @@ module Ctaux
             τj = τcon[jj]
             #println("τj:",τj,"\t j",indexcon[j])
             sj = spincon[jj]
-            Gτ0 = calc_Gτ(τi,τj,rspin,β)
+            Gτ0 = calc_Gτ(τi,τj,rspin,β,Gτ0spl)
             ev =  ifelse(ssign*sj==1,expVg[1],expVg[2])
             Dr[indexcon[j],rspin] = - Gτ0*(ev-1)
         end
@@ -421,7 +362,7 @@ module Ctaux
         return det_ratio
     end
 
-    function calc_Gτ(τi,τj,sigma,β)
+    function calc_Gτ(τi,τj,sigma,β,Gτ0spl)
         dτ = τi - τj
         if dτ < 0
             dτ += β
@@ -436,10 +377,10 @@ module Ctaux
 
 
 
-    function try_insert_vertex(τcon,spincon,indexcon,currentk)
+    function try_insert_vertex(τcon,spincon,indexcon,currentk,β)
         #global currentk,τcon,indexcon
         #global currentk
-        global β
+        #global β
         τ=rand()*β
         spin = (-1)^(rand(1:2)-1)
         index = 1
@@ -487,16 +428,6 @@ module Ctaux
 
     function vertex_insert!(vertex,τcon,spincon,indexcon,currentk)
 
-         #= old methods like Fortran language
-        index = currentk + 1
-        for i in currentk:-1:vertex[3]
-            indexcon[i+1] = indexcon[i]
-        end
-
-        indexcon[vertex[3]] = index
-        τcon[index] = vertex[1]
-        spincon[index] = vertex[2]
-        =#
 
         
         if currentk == 0
@@ -517,29 +448,7 @@ module Ctaux
     end
 
     function vertex_remove!(vertex,τcon,spincon,indexcon,currentk)
-#        global currentk
-
-        #= old method like Fortran language        
-        index = indexcon[vertex[3]]
-        for i in vertex[3]:currentk-1
-            indexcon[i] = indexcon[i+1]
-        end
-        indexcon[currentk] = 0
-        for i in 1:currentk
-            if indexcon[i] > index
-                indexcon[i] = indexcon[i]-1
-            end
-        end
-
-        if index != currentk
-            for i in index:currentk-1
-                τcon[i] = τcon[i+1]
-                spincon[i] = spincon[i+1]
-            end
-        end        
-        =#
-
-             
+           
         is = indexcon[vertex[3]]
         deleteat!(τcon,is)
         deleteat!(spincon,is)
@@ -587,24 +496,7 @@ module Ctaux
         ntemp[k,1:k-1] = R[1:k-1]
         ntemp[1:k-1,k] = L[1:k-1]        
 
-        #=
-        if as == 1
-            ntemp[2:k,2:k] = nmatt[1:k-1,1:k-1]
-            ntemp[1,2:k] = R[1:k-1]
-            ntemp[2:k,1] = L[1:k-1]
-        elseif as == k
-            ntemp[1:k-1,1:k-1] = nmatt[1:k-1,1:k-1]
-            ntemp[k,1:k-1] = R[1:k-1]
-            ntemp[1:k-1,k] = L[1:k-1]
 
-        else
-            ntemp[1:as-1,1:as-1] = nmatt[1:as-1,1:as-1]
-            ntemp[1:as-1,as] = L[1:as-1]
-            ntemp[as+1:k,as] = L[as:k-1]
-            ntemp[as,1:as-1] = R[1:as-1]
-            ntemp[as,as+1:k] = R[as:k-1]
-        end
-        =#
 
         nmat[1:k,1:k,rspin] = ntemp[1:k,1:k]
     
@@ -621,25 +513,11 @@ module Ctaux
         λ = det_ratio
         ntemp = zeros(Float64,k,k)
         for j in 1:k
-            #=
-            if j -as >= 0
-                jtheta = 1
-            else 
-                jtheta = 0
-            end
-            jj = j + jtheta
-            =#
+
             jj = j + ifelse(j - as>=0,1,0)
 
             for i in 1:k
-                #=
-                if i-as >= 0
-                    itheta = 1
-                else
-                    itheta = 0
-                end
-                ii = i + itheta
-                =#
+
                 ii = i + ifelse(i - as >= 0,1,0)
                 ntemp[i,j] = nmat[ii,jj,rspin] -nmat[ii,as,rspin]*nmat[as,jj,rspin]/λ
             end
@@ -650,17 +528,12 @@ module Ctaux
 
 
 
-    function init_arrays()
+    function init_arrays(mkink,norbs,ntime)
         nmat = zeros(Float64,mkink,mkink,norbs)
         #global S,Scount
         S = zeros(Float64,ntime,norbs)
         Scount = zeros(Float64,ntime,norbs)
    
-        #=
-        τcon = zeros(Float64,mkink)    
-        spincon = zeros(Int64,mkink)
-        indexcon = zeros(Int64,mkink) #address of configurations
-        =#
 
         
         τcon = Float64[]
@@ -671,8 +544,8 @@ module Ctaux
         return nmat,S,Scount,τcon,spincon,indexcon
     end
 
-    function calc_green(S,τmesh)
-        global β,ntime,norbs
+    function calc_green(S,τmesh,β,ntime,norbs,Gτ0spl)
+#        global β,ntime,norbs
         δτ = β/(ntime-1)
         Gτ = zeros(Float64,ntime,norbs)
         gsum = zeros(Float64,norbs)
@@ -690,7 +563,7 @@ module Ctaux
             for sigma in 1:norbs
                 Gτ[i,sigma] = Gτ0spl[sigma](τ)
             end
-            gsum[:] =0.0
+            gsum[:] .=0.0
             for j in 1:i
                 τt = τmesh[j]
                 dτ = τ-τt
@@ -747,7 +620,7 @@ module Ctaux
 
 
 
-    function calc_S!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh)
+    function calc_S!(nmat,τcon,spincon,indexcon,S,Scount,currentk,τmesh,ntime,norbs,β,expVg,Gτ0spl)
         Mklm = zeros(Float64,currentk,currentk,norbs)
         ev = zeros(Float64,norbs)
         g0l = zeros(Float64,currentk,norbs)
@@ -779,7 +652,7 @@ module Ctaux
             end
         end
 
-        global ntime,β
+        #global ntime,β
         Mkl = zeros(Float64,norbs)
         ξ = β/ntime
         id = 3
@@ -787,7 +660,7 @@ module Ctaux
             kk = indexcon[k]
             τk = τcon[kk]
             iτ = ceil(Int64,ntime*τk/β)
-            Mkl[:] = 0.0#zeros(Float64,norbs)
+            Mkl[:] .= 0.0#zeros(Float64,norbs)
             for l in 1:currentk
                 ll = indexcon[l]
                 for sigma in 1:norbs                
@@ -821,8 +694,8 @@ module Ctaux
 
 
 
-    function fft_ω2τ(fω,ωmesh)
-        global norbs,mfreq,ntime,β
+    function fft_ω2τ(fω,ωmesh,norbs,mfreq,ntime,β)
+#        global norbs,mfreq,ntime,β
         fτ = zeros(Float64,ntime,norbs,norbs)
         for i in 1:norbs
             for j in 1:norbs
@@ -853,7 +726,7 @@ module Ctaux
   
         
         gτ = zeros(Float64,ntime)
-        gτ[1:ntime]= real(gk[1:ntime])*(2/β)-tail/2
+        gτ[1:ntime]= real(gk[1:ntime])*(2/β).-tail/2
      
         a = real(vω[mfreq])*ωmesh[mfreq]/π
         gτ[1] += a
