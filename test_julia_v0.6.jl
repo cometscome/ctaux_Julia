@@ -1,9 +1,7 @@
-include("./ctaux_juliav1.9.jl")
+include("./ctaux.jl")
 using .Ctaux
 
-
 function main()
-
     β=10.0
     U = 2.0
     μ=U/2
@@ -15,9 +13,8 @@ function main()
     V = 1.0 #Strength of the hybridization
     nthermal = 1000
     mkink = 1024
-    
-    τmesh,Gτ,orderdisp,S = Ctaux.ctaux_solver(β,U,μ,K,mqs,ntime,mfreq,norbs,V,nthermal,mkink)
 
+    τmesh,Gτ,orderdisp,S = Ctaux.ctaux_solver(β,U,μ,K,mqs,ntime,mfreq,norbs,V,nthermal,mkink)
 end
 main()
 

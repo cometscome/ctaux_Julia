@@ -1,8 +1,7 @@
-include("./ctaux_juliav1.9.jl")
-using .Ctaux
+include("./ctaux_faster.jl")
+using .CTAUX_faster
 
-
-function main()
+function main_faster()
 
     β=10.0
     U = 2.0
@@ -16,8 +15,6 @@ function main()
     nthermal = 1000
     mkink = 1024
     
-    τmesh,Gτ,orderdisp,S = Ctaux.ctaux_solver(β,U,μ,K,mqs,ntime,mfreq,norbs,V,nthermal,mkink)
-
+    ctaux_main(U,K,β,V,μ;ntime,mfreq,mkink,nthermal,norb,mqs)
 end
-main()
-
+main_faster()

@@ -16,7 +16,12 @@ The code was revised for Julia 0.7.
 # update (2023/09/24)
 I wrote new code for Julia 1.9.3. The code is ctaux_faster.jl
 
-Old code in Julia 1.9.3 (ctaux_juliav1.9.jl):
+Original code Julia 0.7 (ctaux.jl)
+```
+ 19.759999 seconds (208.14 M allocations: 11.827 GiB, 0.94% gc time)
+```
+
+Old code rewritten for Julia 1.9.3 (ctaux_juliav1.9.jl):
 ```
  15.258614 seconds (170.55 M allocations: 10.790 GiB, 1.24% gc time, 0.11% compilation time)
 ```
