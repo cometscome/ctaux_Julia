@@ -16,6 +16,8 @@ The code was revised for Julia 0.7.
 # update (2023/09/24)
 I wrote new code for Julia 1.9.3. The code is ctaux_faster.jl
 
+The benchmark (MacBookPro M2 Max)
+
 Original code Julia 0.7 (ctaux.jl)
 ```
  19.759999 seconds (208.14 M allocations: 11.827 GiB, 0.94% gc time)
